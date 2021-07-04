@@ -33,3 +33,4 @@ log-*
 !asset/*.png
 *.sh
 slurm/*
+.idea/
