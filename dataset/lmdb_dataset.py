@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 # rewrite for yourself:
-lmdb_root = '/users/htd/beegfs/DATA/'
+lmdb_root = '/home/tianxing/work/data/'
 
 def read_file(path):
     with open(path, 'r') as f:
@@ -140,7 +140,7 @@ class UCF101LMDB_2CLIP(object):
         vpath, vlen, vlabel, vname = self.video_subset.iloc[index]
         env = self.env
         with env.begin(write=False) as txn:
-            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')))
+            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')),  raw=True)
         
         frame_index = self.double_sampler(vlen)
         seq = [pil_from_raw_rgb(raw[i]) for i in frame_index]
@@ -177,7 +177,7 @@ class UCF101LMDB(UCF101LMDB_2CLIP):
         vpath, vlen, vlabel, vname = self.video_subset.iloc[index]
         env = self.env
         with env.begin(write=False) as txn:
-            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')))
+            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')),  raw=True)
         
         frame_index = self.frame_sampler(vlen)
         seq = [pil_from_raw_rgb(raw[i]) for i in frame_index]
@@ -305,7 +305,7 @@ class UCF101Flow_LMDB_2CLIP(object):
         vpath, _, vlabel, vname, vlen = self.video_subset.iloc[index]
         env = self.env
         with env.begin(write=False) as txn:
-            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')))
+            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')),  raw=True)
         
         frame_index = self.double_sampler(vlen)
         seq = [pil_from_raw_rgb(raw[i]) for i in frame_index]
@@ -342,7 +342,7 @@ class UCF101Flow_LMDB(UCF101Flow_LMDB_2CLIP):
         vpath, _, vlabel, vname, vlen = self.video_subset.iloc[index]
         env = self.env
         with env.begin(write=False) as txn:
-            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')))
+            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')),  raw=True)
         
         frame_index = self.frame_sampler(vlen)
         seq = [pil_from_raw_rgb(raw[i]) for i in frame_index]
@@ -490,10 +490,10 @@ class UCF101_2STREAM_LMDB_2CLIP(object):
         vpath, _, vlabel, vname, vlen = self.video_subset.iloc[index]
         env_rgb = self.env_rgb
         with env_rgb.begin(write=False) as txn:
-            raw_rgb = msgpack.loads(txn.get(self.get_video_id_rgb[vname].encode('ascii')))
+            raw_rgb = msgpack.loads(txn.get(self.get_video_id_rgb[vname].encode('ascii')),  raw=True)
         env_flow = self.env_flow
         with env_flow.begin(write=False) as txn:
-            raw_flow = msgpack.loads(txn.get(self.get_video_id_flow[vname].encode('ascii')))
+            raw_flow = msgpack.loads(txn.get(self.get_video_id_flow[vname].encode('ascii')),  raw=True)
         
         frame_index = self.double_sampler(vlen)
         seq_rgb = [pil_from_raw_rgb(raw_rgb[i]) for i in frame_index]
@@ -635,7 +635,7 @@ class KineticsLMDB_2CLIP(object):
         
         env = self.env
         with env.begin(write=False) as txn:
-            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')))
+            raw = msgpack.loads(txn.get(self.get_video_id[vname].encode('ascii')),  raw=True)
 
         frame_index = self.double_sampler(vlen)
         seq = [pil_from_raw_rgb(raw[i]) for i in frame_index]
@@ -801,10 +801,10 @@ class Kinetics_2STREAM_LMDB_2CLIP(object):
         vpath, _, vlabel, vname, vlen = self.video_subset.iloc[index]
         env_rgb = self.env_rgb
         with env_rgb.begin(write=False) as txn:
-            raw_rgb = msgpack.loads(txn.get(self.get_video_id_rgb[vname].encode('ascii')))
+            raw_rgb = msgpack.loads(txn.get(self.get_video_id_rgb[vname].encode('ascii')),  raw=True)
         env_flow = self.env_flow
         with env_flow.begin(write=False) as txn:
-            raw_flow = msgpack.loads(txn.get(self.get_video_id_flow[vname].encode('ascii')))
+            raw_flow = msgpack.loads(txn.get(self.get_video_id_flow[vname].encode('ascii')),  raw=True)
         
         frame_index = self.double_sampler(vlen)
         seq_rgb = [pil_from_raw_rgb(raw_rgb[i]) for i in frame_index]
