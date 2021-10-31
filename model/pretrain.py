@@ -47,11 +47,11 @@ class InfoNCE(nn.Module):
         backbone, self.param = select_backbone(network)
         feature_size = self.param['feature_size']
         self.encoder_q = nn.Sequential(
-                            backbone, 
-                            nn.AdaptiveAvgPool3d((1,1,1)),
-                            nn.Conv3d(feature_size, feature_size, kernel_size=1, bias=True),
-                            nn.ReLU(),
-                            nn.Conv3d(feature_size, dim, kernel_size=1, bias=True))
+                            backbone,  # (B, 1024, T/8, H/32, W/32)
+                            nn.AdaptiveAvgPool3d((1,1,1)),  # (B, 1024, 1, 1, 1)
+                            nn.Conv3d(feature_size, feature_size, kernel_size=1, bias=True),  # (B, 1024, 1, 1, 1)
+                            nn.ReLU(),  # (B, 1024, 1, 1, 1)
+                            nn.Conv3d(feature_size, dim, kernel_size=1, bias=True))  # (B, self.dim, 1, 1, 1)
 
         backbone, _ = select_backbone(network)
         self.encoder_k = nn.Sequential(
@@ -152,7 +152,7 @@ class InfoNCE(nn.Module):
         # compute query features
         q = self.encoder_q(x1)  # queries: B,C,1,1,1
         q = nn.functional.normalize(q, dim=1)
-        q = q.view(B, self.dim)
+        q = q.view(B, self.dim)  # (B,C)
 
         in_train_mode = q.requires_grad
 
@@ -163,26 +163,26 @@ class InfoNCE(nn.Module):
             # shuffle for making use of BN
             x2, idx_unshuffle = self._batch_shuffle_ddp(x2)
 
-            k = self.encoder_k(x2)  # keys: B,C,1,1,1
+            k = self.encoder_k(x2)  # keys: B,C,1,1,1  (C=self.dim)
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
             k = self._batch_unshuffle_ddp(k, idx_unshuffle)
 
-        k = k.view(B, self.dim)
+        k = k.view(B, self.dim)  # (B,C)
 
         # compute logits
-        l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
-        l_neg = torch.einsum('nc,ck->nk', [q, self.queue.clone().detach()])
+        l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)  # (B,1)
+        l_neg = torch.einsum('nc,ck->nk', [q, self.queue.clone().detach()])  # (B, len(queue))  len(queue)=self.K
 
         # logits: B,(1+K)
-        logits = torch.cat([l_pos, l_neg], dim=1)
+        logits = torch.cat([l_pos, l_neg], dim=1)  # (B,1+len(queue))
 
         # apply temperature
         logits /= self.T
 
         # labels: positive key indicators
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()  #(B,)
         
         # dequeue and enqueue
         if in_train_mode: self._dequeue_and_enqueue(k)
@@ -294,7 +294,7 @@ class CoCLR(InfoNCE):
 
         self.topk = topk
 
-        # create another encoder, for the second view of the data 
+        # create another encoder, for the second view of the data (frozen!)
         backbone, _ = select_backbone(network)
         feature_size = self.param['feature_size']
         self.sampler = nn.Sequential(
@@ -345,45 +345,48 @@ class CoCLR(InfoNCE):
         '''Output: logits, targets'''
         (B, N, *_) = block1.shape # B,N,C,T,H,W
         assert N == 2
-        x1 = block1[:,0,:].contiguous()
-        f1 = block1[:,1,:].contiguous()
-        x2 = block2[:,0,:].contiguous()
-        f2 = block2[:,1,:].contiguous()
+        x1 = block1[:,0,:].contiguous()  # clip1-rgb
+        f1 = block1[:,1,:].contiguous()  # clip1-flow
+        x2 = block2[:,0,:].contiguous()  # clip2-rgb
+        f2 = block2[:,1,:].contiguous()  # clip2-flow
 
-        if self.reverse:
+        if self.reverse:  # rgb,flow -> flow,rgb
             x1, f1 = f1, x1
             x2, f2 = f2, x2 
 
-        # compute query features
+        # compute query features (e.g. feature of clip1-rgb)
         q = self.encoder_q(x1)  # queries: B,C,1,1,1
         q = nn.functional.normalize(q, dim=1)
-        q = q.view(B, self.dim)
+        q = q.view(B, self.dim)  # (B,C)
 
         in_train_mode = q.requires_grad
 
-        # compute key features
+        # compute key features  (e.g. feature of clip2-rgb)
         with torch.no_grad():  # no gradient to keys
-            if in_train_mode: self._momentum_update_key_encoder()  # update the key encoder
+            if in_train_mode: self._momentum_update_key_encoder()  # update the key encoder *(self.encoder_k, not self.sampler!)
 
             # shuffle for making use of BN
             x2, idx_unshuffle = self._batch_shuffle_ddp(x2)
 
+            # compute key feature for first view (e.g. feature of clip2-rgb)
             k = self.encoder_k(x2)  # keys: B,C,1,1,1
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
             k = self._batch_unshuffle_ddp(k, idx_unshuffle)
-            k = k.view(B, self.dim)
+            k = k.view(B, self.dim)  # (B,C)
 
-            # compute key feature for second view
-            kf = self.sampler(f2) # keys: B,C,1,1,1
+            # compute key feature for second view (e.g. feature of clip2-flow)
+            kf = self.sampler(f2) # keys: B,C,1,1,1  # encode with a frozen encoder
             kf = nn.functional.normalize(kf, dim=1)
             kf = kf.view(B, self.dim)
 
         # if queue_second is full: compute mask & train CoCLR, else: train InfoNCE
 
         # compute logits
+        # e.g. compute simlarity between feature of clip1-rgb and feature of clip2-rgb
         l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
+        # e.g. compute simlarities between feature of clip1-rgb and features in clip2-rgb-queue
         l_neg = torch.einsum('nc,ck->nk', [q, self.queue.clone().detach()])
 
         # logits: N,(1+K)
@@ -397,20 +400,22 @@ class CoCLR(InfoNCE):
         mask_source = k_vsource.unsqueeze(1) == self.queue_vname.unsqueeze(0) # B,K
         mask = mask_source.clone()
 
+        # check whether the queue is full
         if not self.queue_is_full:
             self.queue_is_full = torch.all(self.queue_label != -1)
             if self.queue_is_full: print('\n===== queue is full now =====')
 
         if self.queue_is_full and (self.topk != 0):
+            # e.g. compute similarities between feature of clip2-flow and features in clip2-flow-queue
             mask_sim = kf.matmul(self.queue_second.clone().detach())
             mask_sim[mask_source] = - np.inf # mask out self (and sibling videos)
             _, topkidx = torch.topk(mask_sim, self.topk, dim=1)
             topk_onehot = torch.zeros_like(mask_sim)
             topk_onehot.scatter_(1, topkidx, 1)
-            mask[topk_onehot.bool()] = True
+            mask[topk_onehot.bool()] = True  # mask of topk in history (B,K)
 
         mask = torch.cat([torch.ones((mask.shape[0],1), dtype=torch.long, device=mask.device).bool(),
-                          mask], dim=1)
+                          mask], dim=1)  # full mask: (B,K+1)
 
         # dequeue and enqueue
         if in_train_mode: self._dequeue_and_enqueue(k, kf, k_vsource)

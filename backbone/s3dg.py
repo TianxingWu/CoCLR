@@ -144,7 +144,7 @@ class S3D(nn.Module):
         else: # normal
             self.Conv_1a = STConv3d(input_channel, 64, kernel_size=7, stride=2, padding=3) 
 
-        self.block1 = nn.Sequential(self.Conv_1a) # (64, 32, 112, 112)
+        self.block1 = nn.Sequential(self.Conv_1a) # (64, 32, 112, 112)  # (64, T/2, H/2, W/2) when T=64, H=W=224
             
         ###################################
 
@@ -198,9 +198,9 @@ class S3D(nn.Module):
 
         ###################################
 
-        # self.AvgPool_0a = nn.AvgPool3d(kernel_size=(2, 7, 7), stride=1)
+        # self.AvgPool_0a = nn.AvgPool3d(kernel_size=(2, 7, 7), stride=1)  # (1024, 7, 1, 1)
         # self.Dropout_0b = nn.Dropout3d(dropout_keep_prob)
-        # self.Conv_0c = nn.Conv3d(1024, num_classes, kernel_size=1, stride=1, bias=True)
+        # self.Conv_0c = nn.Conv3d(1024, num_classes, kernel_size=1, stride=1, bias=True)  # (num_classes, 7, 1, 1)
 
         # self.classifier = nn.Sequential(
         #     self.AvgPool_0a,
